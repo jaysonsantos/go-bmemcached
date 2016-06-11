@@ -14,7 +14,7 @@ type (
 		conn net.Conn
 	}
 
-	Request struct {
+	_Request struct {
 		magic        uint8
 		opcode       uint8
 		keyLength    uint16
@@ -26,7 +26,7 @@ type (
 		cas          uint64
 	}
 
-	Response struct {
+	_Response struct {
 		magic        uint8
 		opcode       uint8
 		keyLength    uint16
@@ -40,18 +40,18 @@ type (
 )
 
 const (
-	HeaderSize   = 24
-	TypeRequest  = 0x80
-	TypeResponse = 0x81
+	headerSize   = 24
+	typeRequest  = 0x80
+	typeResponse = 0x81
 
-	CommandGet    = 0x00
-	CommandSet    = 0x01
-	CommandDelete = 0x04
+	commandGet    = 0x00
+	commandSet    = 0x01
+	commandDelete = 0x04
 
-	StatusSuccess        = 0x00
-	StatusKeyNotFound    = 0x01
-	StatusKeyExists      = 0x02
-	StatusUnknownCommand = 0x81
+	statusSuccess        = 0x00
+	statusKeyNotFound    = 0x01
+	statusKeyExists      = 0x02
+	statusUnknownCommand = 0x81
 )
 
 // New creates a Connection to memcached
@@ -66,7 +66,7 @@ func New(addr string) (Connection, error) {
 	return conn, err
 }
 
-func (c *Connection) writeRequest(request Request, finalPayload []byte) error {
+func (c *Connection) writeRequest(request _Request, finalPayload []byte) error {
 	var tempBuffer, // Used to convert bigger integers to []byte
 		buf []byte
 	writer := bytes.NewBuffer(buf)
@@ -108,13 +108,13 @@ func (c *Connection) writeRequest(request Request, finalPayload []byte) error {
 	return nil
 }
 
-func (c *Connection) parseResponse(buf []byte) (Response, error) {
+func (c *Connection) parseResponse(buf []byte) (_Response, error) {
 	var magic, opcode, extrasLength, dataType uint8
 	var keyLength, reserved uint16
 	var bodyLength, opaque uint32
 	var cas uint64
 	var err error
-	var response Response
+	var response _Response
 
 	reader := bytes.NewBuffer(buf)
 	magic, err = reader.ReadByte()
@@ -154,7 +154,7 @@ func (c *Connection) parseResponse(buf []byte) (Response, error) {
 		return response, err
 	}
 
-	response = Response{magic, opcode, keyLength, extrasLength, dataType,
+	response = _Response{magic, opcode, keyLength, extrasLength, dataType,
 		reserved, bodyLength, opaque, cas}
 
 	return response, nil
@@ -162,22 +162,22 @@ func (c *Connection) parseResponse(buf []byte) (Response, error) {
 
 func (c *Connection) getErrorMessage(errorCode uint16) string {
 	switch errorCode {
-	case StatusKeyExists:
+	case statusKeyExists:
 		return "Key already exists"
-	case StatusKeyNotFound:
+	case statusKeyNotFound:
 		return "Key not found"
-	case StatusUnknownCommand:
+	case statusUnknownCommand:
 		return "Unkown command"
 	default:
 		return fmt.Sprintf("Unkown error code '%d'", errorCode)
 	}
 }
 
-func (c *Connection) readResponse() (Response, error) {
-	var response Response
-	buf := make([]byte, HeaderSize)
+func (c *Connection) readResponse() (_Response, error) {
+	var response _Response
+	buf := make([]byte, headerSize)
 	c.conn.Read(buf)
-	if buf[0] != TypeRequest && buf[0] != TypeResponse {
+	if buf[0] != typeRequest && buf[0] != typeResponse {
 		return response, fmt.Errorf("Server sent an unknown code: %d", buf[0])
 	}
 	response, err := c.parseResponse(buf)
@@ -186,9 +186,9 @@ func (c *Connection) readResponse() (Response, error) {
 	}
 
 	switch response.status {
-	case StatusSuccess:
+	case statusSuccess:
 		break
-	case StatusKeyExists, StatusKeyNotFound, StatusUnknownCommand:
+	case statusKeyExists, statusKeyNotFound, statusUnknownCommand:
 		errorMessage := c.getErrorMessage(response.status)
 		c.conn.Read(make([]byte, response.bodyLength))
 		return response, errors.New(errorMessage)
@@ -197,14 +197,14 @@ func (c *Connection) readResponse() (Response, error) {
 	return response, nil
 }
 
-// Set is used to set a value on memcached
+// Set a value on memcached
 func (c *Connection) Set(key string, value string, expirationTime uint32) (int, error) {
 	var tempBuffer, finalPayload []byte
 	var err error
 
 	extrasLength := 8 // Flags and Expiration Time
 	bodyLength := uint32(len(key) + len(value) + extrasLength)
-	request := Request{TypeRequest, CommandSet, uint16(len(key)), uint8(extrasLength), 0x00, 0x00,
+	request := _Request{typeRequest, commandSet, uint16(len(key)), uint8(extrasLength), 0x00, 0x00,
 		bodyLength, 0x00, 0x00}
 
 	writer := bytes.NewBuffer(finalPayload)
@@ -237,7 +237,7 @@ func (c *Connection) Set(key string, value string, expirationTime uint32) (int, 
 func (c *Connection) Get(key string) (string, error) {
 	var tempBuffer []byte
 	// TODO: Add cas
-	request := Request{TypeRequest, CommandGet, uint16(len(key)), 0x00, 0x00, 0x00,
+	request := _Request{typeRequest, commandGet, uint16(len(key)), 0x00, 0x00, 0x00,
 		uint32(len(key)), 0x00, 0x00}
 
 	finalPayload := bytes.NewBuffer(make([]byte, 0))
@@ -263,7 +263,7 @@ func (c *Connection) Get(key string) (string, error) {
 
 // Delete a key
 func (c *Connection) Delete(key string) error {
-	request := Request{TypeRequest, CommandDelete, uint16(len(key)), 0x00, 0x00, 0x00,
+	request := _Request{typeRequest, commandDelete, uint16(len(key)), 0x00, 0x00, 0x00,
 		uint32(len(key)), 0x00, 0x00}
 
 	finalPayload := bytes.NewBuffer(make([]byte, 0))
