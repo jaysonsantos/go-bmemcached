@@ -3,6 +3,7 @@ package bmemcached
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 )
@@ -159,12 +160,38 @@ func (c *Connection) parseResponse(buf []byte) (Response, error) {
 	return response, nil
 }
 
+func (c *Connection) getErrorMessage(errorCode uint16) string {
+	switch errorCode {
+	case StatusKeyExists:
+		return "Key already exists"
+	case StatusKeyNotFound:
+		return "Key not found"
+	case StatusUnknownCommand:
+		return "Unkown command"
+	default:
+		return fmt.Sprintf("Unkown error code '%d'", errorCode)
+	}
+}
+
 func (c *Connection) readResponse() (Response, error) {
+	var response Response
 	buf := make([]byte, HeaderSize)
 	c.conn.Read(buf)
+	if buf[0] != TypeRequest && buf[0] != TypeResponse {
+		return response, fmt.Errorf("Server sent an unknown code: %d", buf[0])
+	}
 	response, err := c.parseResponse(buf)
 	if err != nil {
 		return response, err
+	}
+
+	switch response.status {
+	case StatusSuccess:
+		break
+	case StatusKeyExists, StatusKeyNotFound, StatusUnknownCommand:
+		errorMessage := c.getErrorMessage(response.status)
+		c.conn.Read(make([]byte, response.bodyLength))
+		return response, errors.New(errorMessage)
 	}
 
 	return response, nil
@@ -204,6 +231,34 @@ func (c *Connection) Set(key string, value string, expirationTime uint32) (int, 
 	}
 
 	return len(value), err
+}
+
+// Get a key on memcached
+func (c *Connection) Get(key string) (string, error) {
+	var tempBuffer []byte
+	// TODO: Add cas
+	request := Request{TypeRequest, CommandGet, uint16(len(key)), 0x00, 0x00, 0x00,
+		uint32(len(key)), 0x00, 0x00}
+
+	finalPayload := bytes.NewBuffer(make([]byte, 0))
+	finalPayload.WriteString(key)
+
+	err := c.writeRequest(request, finalPayload.Bytes())
+	if err != nil {
+		return "", err
+	}
+	response, err := c.readResponse()
+	if err != nil {
+		return "", err
+	}
+	// TODO: Treat flags
+	tempBuffer = make([]byte, 4)
+	c.conn.Read(tempBuffer)
+
+	tempBuffer = make([]byte, response.bodyLength-uint32(response.extrasLength))
+	c.conn.Read(tempBuffer)
+
+	return string(tempBuffer), nil
 }
 
 // Delete a key

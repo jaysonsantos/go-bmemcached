@@ -7,27 +7,53 @@ import (
 )
 
 func TestSet(t *testing.T) {
+	key := "abc"
 	conn, err := New("localhost:11211")
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	size, err := conn.Set("abc", "def", 1000)
+	size, err := conn.Set(key, "def", 1000)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	assert.Equal(t, size, 3)
-	conn.Delete("abc")
+	conn.Delete(key)
 }
 
-// func TestGet(t *testing.T) {
-// 	conn, err := New("localhost:11211")
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-// 	size, err := conn.Set("abc", "def", 1000)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-// 	value, err := conn.Get("abc")
+func TestGet(t *testing.T) {
+	key := "abc"
+	conn, err := New("localhost:11211")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Set(key, "def", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := conn.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, value, "def")
+	conn.Delete(key)
+}
 
-// }
+func TestDelete(t *testing.T) {
+	key := "abc"
+	conn, err := New("localhost:11211")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Set(key, "def", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := conn.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, value, "def")
+	conn.Delete(key)
+	value, err = conn.Get(key)
+	assert.Equal(t, err.Error(), "Key not found")
+}
