@@ -1,0 +1,2 @@
+# go-bmemcached
+Learning go
